@@ -1,7 +1,34 @@
 # Using Our Tools
 
-AcreetionOS Server comes with several built-in tools to make system
-maintenance and management easy. Here's what they do and how to use them.
+AcreetionOS Server comes with **90+ pre-installed tools** across 15 categories.
+This is every server maintainer's dream toolkit — curated, categorized, and
+ready to use.
+
+## acreetionos-toolbox — Browse & Launch Everything
+
+```bash
+sudo acreetionos-toolbox
+```
+
+A categorized TUI launcher that lets you browse all installed tools by
+category, read descriptions, and launch them directly. Categories:
+
+| Category         | Tools include                                          |
+|------------------|--------------------------------------------------------|
+| Web Admin        | Cockpit, Cockpit Machines/Podman/Storage               |
+| Monitoring       | htop, btop, glances, atop, bottom, procs, netdata      |
+| Storage          | ncdu, gdu, duf, dust, testdisk, ddrescue, timeshift    |
+| Network          | nmap, tcpdump, iperf3, nethogs, bmon, mtr, dog        |
+| Files            | mc, ranger, lf, nnn                                   |
+| Modern CLI       | bat, ripgrep, fd, jq, yq, delta, fzf, zoxide, tldr    |
+| Logs             | lnav, journalctl                                       |
+| Containers       | lazydocker, ctop, docker, docker-compose               |
+| Database         | mycli, pgcli, usql, mariadb, postgresql, redis         |
+| Security         | lynis, rkhunter, fail2ban, clamav, nftables            |
+| Dev              | git, gh, glab, httpie, make, cmake                     |
+| Remote           | ssh, mosh, byobu, tmux, screen                         |
+| Backup           | restic, borg, timeshift                                |
+| Misc             | asciinema, entr, parallel, units, hyperfine, zstd       |
 
 ## acreetionos-maintain — The Swiss Army Knife
 

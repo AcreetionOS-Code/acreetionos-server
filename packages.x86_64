@@ -288,8 +288,116 @@ fsarchiver
 timeshift
 
 ################################################################################
+# 🧰 SERVER TOOLBOX — Every maintainer's dream toolkit
+# Categorized for easy discovery. Run 'acreetionos-toolbox' to browse.
+################################################################################
+
+# ── WEB-BASED SERVER MANAGEMENT ─────────────────────────────────────────
+cockpit
+cockpit-machines
+cockpit-podman
+cockpit-storaged
+
+# ── SYSTEM MONITORING (INTERACTIVE) ─────────────────────────────────────
+glances
+atop
+bottom
+procs
+bpytop
+
+# ── TERMINAL FILE MANAGERS ──────────────────────────────────────────────
+mc
+ranger
+lf
+nnn
+
+# ── NETWORK PERFORMANCE & ANALYSIS ──────────────────────────────────────
+iperf3
+nethogs
+bmon
+vnstat
+jnettop
+wireshark-cli
+ngrep
+arp-scan
+
+# ── DISK USAGE ANALYZERS ────────────────────────────────────────────────
+duf
+dust
+gdu
+dua-cli
+
+# ── MODERN CLI REPLACEMENTS (better defaults) ───────────────────────────
+bat
+ripgrep
+fd
+jq
+yq
+delta
+sd
+cheat
+tldr
+tealdeer
+micro
+fzf
+zoxide
+procs
+bottom
+
+# ── DEVELOPMENT & BUILD TOOLS ───────────────────────────────────────────
+make
+cmake
+gcc
+gh
+glab
+httpie
+curlie
+
+# ── DATABASE CLIs ────────────────────────────────────────────────────────
+mycli
+pgcli
+usql
+
+# ── CONTAINER TOOLS ─────────────────────────────────────────────────────
+lazygit
+lazydocker
+ctop
+
+# ── SECURITY & HARDENING ─────────────────────────────────────────────────
+lynis
+rkhunter
+chkrootkit
+fail2ban
+clamav
+clamav-freshclam
+
+# ── LOG MANAGEMENT ───────────────────────────────────────────────────────
+lnav
+
+# ── REMOTE ACCESS ────────────────────────────────────────────────────────
+mosh
+byobu
+
+# ── TERMINAL RECORDING & SHARING ─────────────────────────────────────────
+asciinema
+
+# ── MISC POWER TOOLS ─────────────────────────────────────────────────────
+entr
+moreutils
+pv
+parallel
+rlwrap
+units
+bandwhich
+dog
+hexyl
+hyperfine
+choose
+xh
+zstd
+
+################################################################################
 # MISCELLANEOUS
 ################################################################################
-pv
 mailcap
 mtools

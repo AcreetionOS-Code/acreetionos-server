@@ -360,6 +360,7 @@ cp /usr/local/bin/acreetionos-strip-gui "${INSTALL_DIR}/usr/local/bin/" 2>/dev/n
 cp /usr/local/bin/acreetionos-install-gui "${INSTALL_DIR}/usr/local/bin/" 2>/dev/null || true
 cp /usr/local/bin/acreetionos-maintain "${INSTALL_DIR}/usr/local/bin/" 2>/dev/null || true
 cp /usr/local/bin/acreetionos-welcome "${INSTALL_DIR}/usr/local/bin/" 2>/dev/null || true
+cp /usr/local/bin/acreetionos-toolbox "${INSTALL_DIR}/usr/local/bin/" 2>/dev/null || true
 cp /etc/systemd/system/acreetionos-firstboot.service "${INSTALL_DIR}/etc/systemd/system/" 2>/dev/null || true
 cp /etc/xdg/autostart/acreetionos-firstboot.desktop "${INSTALL_DIR}/etc/xdg/autostart/" 2>/dev/null || true
 cp /etc/xdg/autostart/acreetionos-welcome.desktop "${INSTALL_DIR}/etc/xdg/autostart/" 2>/dev/null || true

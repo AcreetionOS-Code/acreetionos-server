@@ -68,6 +68,7 @@ Each major release gets 2 years of support.
 
 🛠️  BUILT-IN TOOLS
 
+  acreetionos-toolbox     — Browse & launch 90+ server tools (categorized)
   acreetionos-maintain   — System maintenance menu (updates, firewall,
                            docker, logs, disk health, and more)
   acreetionos-strip-gui  — Remove the desktop, switch to TTY-only
@@ -75,7 +76,7 @@ Each major release gets 2 years of support.
 
 Run any of these with sudo:
 
-  sudo acreetionos-maintain
+  sudo acreetionos-toolbox
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
