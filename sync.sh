@@ -1,52 +1,56 @@
 #!/usr/bin/env bash
-# ==========================================================
-# AcreetionOS Git Mirror Sync Script
-# Mirrors source repo → destination repo via SSH
-# Author: Natalie
-# ==========================================================
+# =============================================================
+# AcreetionOS Server — Git Mirror Sync Script
+# Pushes to all mirrors: GitHub, GitLab, Codeberg
+# =============================================================
+set -e
 
-set -e  # Exit immediately if a command exits with a non-zero status
+REMOTES=(
+    "origin-github-org   git@github.com:AcreetionOS-Code/acreetionos-server.git"
+    "origin-github-user  git@github.com:spivanatalie64/acreetionos-server.git"
+    "origin-gitlab       git@gitlab.com:sprungles/acreetionos-server.git"
+    "origin-gitlab-self  ssh://git@gitlab.acreetionos.org:2499/natalie/acreetionos-server.git"
+    "origin-codeberg     ssh://git@codeberg.org/sprunglesontheberg/acreetionos-server.git"
+)
 
-# --- Configuration ---
-SOURCE_REPO="git@github.com:cobra3282000/acreetionos.git"
-DEST_REPO="git@github.com:AcreetionOS-Linux/acreetionos.git"
-WORKDIR="$HOME/Projects/acreetionos"
-
-# --- Functions ---
 log() {
     echo -e "\033[1;34m[INFO]\033[0m $1"
 }
 
-error() {
-    echo -e "\033[1;31m[ERROR]\033[0m $1" >&2
-    exit 1
+ok() {
+    echo -e "\033[1;32m[OK]\033[0m $1"
 }
 
-# --- Start ---
-log "Starting AcreetionOS repository mirror process..."
+fail() {
+    echo -e "\033[1;31m[FAIL]\033[0m $1"
+}
 
-# Clean up old working directory if it exists
-if [ -d "$WORKDIR" ]; then
-    log "Removing old working directory..."
-    rm -rf "$WORKDIR"
-fi
+cd "$(dirname "$0")"
 
-# Clone source repository (mirror)
-log "Cloning source repository..."
-git clone --mirror "$SOURCE_REPO" "$WORKDIR" || error "Failed to clone source repository."
+log "Pushing to all mirrors..."
 
-cd "$WORKDIR"
+for remote in "${REMOTES[@]}"; do
+    name=$(echo "$remote" | awk '{print $1}')
+    url=$(echo "$remote" | awk '{print $2}')
+    
+    if git remote get-url "$name" &>/dev/null; then
+        log "Pushing to $name..."
+        if git push "$name" main 2>&1; then
+            ok "$name"
+        else
+            fail "$name (try: git push -f $name main)"
+        fi
+    else
+        log "Adding remote $name..."
+        git remote add "$name" "$url"
+        log "Pushing to $name..."
+        if git push -u "$name" main 2>&1; then
+            ok "$name"
+        else
+            fail "$name"
+        fi
+    fi
+done
 
-# Add destination remote
-log "Adding destination remote..."
-git remote add destination "$DEST_REPO" || error "Failed to add destination remote."
-
-# Fetch latest from source
-log "Fetching updates from source..."
-git fetch --all --prune || error "Failed to fetch updates."
-
-# Push mirrored data to destination
-log "Pushing all refs to destination..."
-git push --mirror destination || error "Failed to push to destination."
-
-log "✅ Sync complete: Destination repository updated successfully."
+echo ""
+log "All mirrors synced."

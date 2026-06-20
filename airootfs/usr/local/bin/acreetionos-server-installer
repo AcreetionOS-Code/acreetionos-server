@@ -1,0 +1,421 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# AcreetionOS Server — Auto Installer
+# Boots, detects first available disk, partitions, installs, configures, reboots.
+# No user interaction required. Like Windows Server unattended setup.
+# ==============================================================================
+set -euo pipefail
+
+# --- Color output ---
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+NC='\033[0m' # No Color
+
+log()  { echo -e "${GREEN}[✓]${NC} $1"; }
+info() { echo -e "${BLUE}[i]${NC} $1"; }
+warn() { echo -e "${YELLOW}[!]${NC} $1"; }
+err()  { echo -e "${RED}[✗]${NC} $1"; }
+
+# --- Configuration (tweakable) ---
+DISK=""
+HOSTNAME="acreetion-server"
+TIMEZONE="UTC"
+LOCALE="en_US.UTF-8"
+KEYMAP="us"
+ROOT_PASSWORD="acreetion"
+USER_NAME="admin"
+USER_PASSWORD="acreetion"
+INSTALL_DIR="/mnt/install"
+EFI_SIZE="1024"  # MB for EFI partition
+PKGS_TO_INSTALL=""  # will be populated below
+
+# --- Cleanup handler ---
+cleanup() {
+    if mountpoint -q "${INSTALL_DIR}"; then
+        umount -R "${INSTALL_DIR}" 2>/dev/null || true
+    fi
+}
+trap cleanup EXIT
+
+# ==============================================================================
+# STEP 0: Check prerequisites
+# ==============================================================================
+banner() {
+    clear
+    echo -e "${CYAN}"
+    echo "╔══════════════════════════════════════════════════════════════╗"
+    echo "║               AcreetionOS Server Installer                  ║"
+    echo "║        Auto-deploying server with Desktop Experience        ║"
+    echo "╚══════════════════════════════════════════════════════════════╝"
+    echo -e "${NC}"
+    echo ""
+}
+
+banner
+
+# Wait for system to be ready
+info "Waiting for system to initialize..."
+systemctl is-system-running --wait 2>/dev/null || sleep 5
+log "System ready."
+
+# Check we're in a live environment
+if ! command -v pacstrap &>/dev/null; then
+    err "This script must be run from the AcreetionOS Server live ISO."
+    exit 1
+fi
+
+# ==============================================================================
+# STEP 1: Detect target disk
+# ==============================================================================
+info "Scanning for available disks..."
+
+# Find the ISO device to exclude it
+ISO_DEVICE=""
+if [ -e /run/archiso/bootmnt ]; then
+    ISO_DEVICE=$(findmnt -n -o SOURCE /run/archiso/bootmnt 2>/dev/null | sed 's/[0-9]*$//' || echo "")
+fi
+
+# Find candidate disks (non-ISO, non-loop, size > 10GB)
+CANDIDATES=()
+while IFS= read -r line; do
+    dev="/dev/${line}"
+    if [ ! -b "${dev}" ]; then continue; fi
+    # Skip the ISO device
+    [[ "${dev}" == "${ISO_DEVICE}" ]] && continue
+    # Skip if it contains the ISO mount
+    if mountpoint -q /run/archiso/bootmnt 2>/dev/null; then
+        if findmnt -n -o SOURCE /run/archiso/bootmnt 2>/dev/null | grep -q "${line}"; then
+            continue
+        fi
+    fi
+    # Skip loop and ram devices
+    [[ "${line}" == loop* ]] && continue
+    [[ "${line}" == ram* ]] && continue
+    [[ "${line}" == sr* ]] && continue
+    CANDIDATES+=("${dev}")
+done < <(lsblk -d -n -o NAME 2>/dev/null)
+
+if [ ${#CANDIDATES[@]} -eq 0 ]; then
+    err "No suitable disk found! Please insert a disk and reboot."
+    exit 1
+fi
+
+DISK="${CANDIDATES[0]}"
+log "Target disk selected: ${DISK} ($(lsblk -d -n -o SIZE "${DISK}" 2>/dev/null))"
+
+# Warn and give chance to cancel
+echo ""
+warn "⚠ THIS WILL DESTROY ALL DATA ON ${DISK} ⚠"
+echo ""
+for i in 10 9 8 7 6 5 4 3 2 1; do
+    echo -ne "${YELLOW}Installation will begin in ${i} seconds... Press Ctrl+C to abort.${NC}\r"
+    sleep 1
+done
+echo ""
+log "Proceeding with installation..."
+
+# ==============================================================================
+# STEP 2: Partition disk
+# ==============================================================================
+info "Partitioning ${DISK}..."
+
+# Wipe existing partition table
+wipefs -a "${DISK}" 2>/dev/null || true
+dd if=/dev/zero of="${DISK}" bs=1M count=10 2>/dev/null || true
+
+# Check if UEFI or BIOS
+if [ -d /sys/firmware/efi ]; then
+    BOOT_MODE="uefi"
+    info "Detected UEFI boot mode"
+else
+    BOOT_MODE="bios"
+    info "Detected BIOS boot mode"
+fi
+
+if [ "${BOOT_MODE}" == "uefi" ]; then
+    # GPT + EFI System Partition
+    parted -s "${DISK}" mklabel gpt
+    parted -s "${DISK}" mkpart "ESP" fat32 1MiB "${EFI_SIZE}MiB"
+    parted -s "${DISK}" set 1 esp on
+    parted -s "${DISK}" mkpart "root" ext4 "${EFI_SIZE}MiB" 100%
+    
+    # Wait for kernel to re-read partition table
+    sleep 2
+    partprobe "${DISK}" 2>/dev/null || true
+    sleep 1
+    
+    EFI_PART="${DISK}1"
+    ROOT_PART="${DISK}2"
+    
+    # Handle nvme names (nvme0n1p1, nvme0n1p2)
+    if [[ "${DISK}" == *"nvme"* ]] || [[ "${DISK}" == *"mmcblk"* ]]; then
+        EFI_PART="${DISK}p1"
+        ROOT_PART="${DISK}p2"
+    fi
+    
+    # Format EFI
+    mkfs.fat -F32 -n "ACREETION_ESP" "${EFI_PART}" >/dev/null 2>&1
+else
+    # BIOS + MBR
+    parted -s "${DISK}" mklabel msdos
+    parted -s "${DISK}" mkpart "root" ext4 1MiB 100%
+    parted -s "${DISK}" set 1 boot on
+    
+    sleep 2
+    partprobe "${DISK}" 2>/dev/null || true
+    sleep 1
+    
+    ROOT_PART="${DISK}1"
+    if [[ "${DISK}" == *"nvme"* ]] || [[ "${DISK}" == *"mmcblk"* ]]; then
+        ROOT_PART="${DISK}p1"
+    fi
+fi
+
+log "Disk partitioned successfully."
+
+# ==============================================================================
+# STEP 3: Format partitions
+# ==============================================================================
+info "Formatting partitions..."
+mkfs.ext4 -F -L "ACREETION_ROOT" "${ROOT_PART}" >/dev/null 2>&1
+log "Partitions formatted."
+
+# ==============================================================================
+# STEP 4: Mount filesystems
+# ==============================================================================
+info "Mounting filesystems..."
+mkdir -p "${INSTALL_DIR}"
+mount "${ROOT_PART}" "${INSTALL_DIR}"
+
+if [ "${BOOT_MODE}" == "uefi" ]; then
+    mkdir -p "${INSTALL_DIR}/boot/efi"
+    mount "${EFI_PART}" "${INSTALL_DIR}/boot/efi"
+fi
+
+log "Filesystems mounted."
+
+# ==============================================================================
+# STEP 5: Install base system via pacstrap
+# ==============================================================================
+info "Installing base system (this may take a while)..."
+
+# Install base packages
+pacstrap -K "${INSTALL_DIR}" \
+    base \
+    linux \
+    linux-firmware \
+    sudo \
+    grub \
+    efibootmgr \
+    networkmanager \
+    openssh \
+    btrfs-progs \
+    xfsprogs \
+    nano \
+    htop \
+    git \
+    curl \
+    wget \
+    2>&1 | grep -v "^::" | grep -v "^ " || true
+
+log "Base system installed."
+
+# ==============================================================================
+# STEP 6: Generate fstab
+# ==============================================================================
+info "Generating fstab..."
+genfstab -U "${INSTALL_DIR}" > "${INSTALL_DIR}/etc/fstab"
+log "fstab generated."
+
+# ==============================================================================
+# STEP 7: Chroot and configure installed system
+# ==============================================================================
+info "Configuring installed system..."
+
+# Write configuration script that runs inside chroot
+cat > "${INSTALL_DIR}/root/chroot_config.sh" << 'CHROOTEOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "[CONFIG] Configuring AcreetionOS Server..."
+
+# Locale
+echo "en_US.UTF-8 UTF-8" > /etc/locale.gen
+echo "en_US ISO-8859-1" >> /etc/locale.gen
+locale-gen >/dev/null 2>&1
+echo "LANG=en_US.UTF-8" > /etc/locale.conf
+echo "KEYMAP=us" > /etc/vconsole.conf
+
+# Hostname
+echo "acreetion-server" > /etc/hostname
+
+# Hosts
+cat > /etc/hosts << 'EOF'
+127.0.0.1   localhost
+::1         localhost
+127.0.1.1   acreetion-server.localdomain acreetion-server
+EOF
+
+# Timezone
+ln -sf /usr/share/zoneinfo/UTC /etc/localtime
+hwclock --systohc
+
+# Root password
+echo "root:acreetion" | chpasswd
+
+# Create admin user
+useradd -m -G wheel,users,docker,libvirt -s /bin/bash admin
+echo "admin:acreetion" | chpasswd
+
+# Sudo config
+echo "%wheel ALL=(ALL:ALL) ALL" > /etc/sudoers.d/99-wheel
+echo "Defaults !requiretty" >> /etc/sudoers.d/99-wheel
+chmod 440 /etc/sudoers.d/99-wheel
+
+# Configure mkinitcpio
+sed -i 's/^HOOKS=.*/HOOKS=(base udev autodetect modconf block filesystems keyboard)/' /etc/mkinitcpio.conf
+mkinitcpio -P >/dev/null 2>&1
+
+# Install bootloader
+if [ -d /sys/firmware/efi ]; then
+    grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=AcreetionOS_Server >/dev/null 2>&1
+else
+    ROOT_DISK=$(findmnt -n -o SOURCE / | sed 's/[0-9]*$//')
+    grub-install --target=i386-pc "${ROOT_DISK}" >/dev/null 2>&1
+fi
+
+# Configure GRUB
+sed -i 's/GRUB_CMDLINE_LINUX_DEFAULT="\(.*\)"/GRUB_CMDLINE_LINUX_DEFAULT="quiet"/' /etc/default/grub
+echo 'GRUB_DISABLE_SUBMENU=y' >> /etc/default/grub
+grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1
+
+# Enable essential services
+systemctl enable NetworkManager.service >/dev/null 2>&1
+systemctl enable sshd.service >/dev/null 2>&1
+systemctl enable systemd-resolved.service >/dev/null 2>&1
+systemctl enable chronyd.service >/dev/null 2>&1
+systemctl enable docker.service >/dev/null 2>&1
+systemctl enable libvirtd.service >/dev/null 2>&1
+
+# Configure NetworkManager for hostname
+echo "[main]" > /etc/NetworkManager/conf.d/hostname.conf
+echo "hostname-mode=config" >> /etc/NetworkManager/conf.d/hostname.conf
+
+# Setup resolved symlink
+ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
+
+# Create server post-install marker
+touch /etc/acreetionos-server-installed
+
+echo "[CONFIG] Configuration complete."
+CHROOTEOF
+
+chmod +x "${INSTALL_DIR}/root/chroot_config.sh"
+
+# Execute configuration in chroot
+arch-chroot "${INSTALL_DIR}" /root/chroot_config.sh 2>&1 | grep -v "^$" || true
+
+# ==============================================================================
+# STEP 8: Install the full package set (optional, done post-config)
+# This installs packages that need the configured system
+# ==============================================================================
+info "Installing server packages..."
+
+# Copy the package list into the chroot for reference
+cp /home/natalie/Projects/acreetionos-server/packages.x86_64 "${INSTALL_DIR}/root/server-packages.txt" 2>/dev/null || true
+
+# Install the desktop and server packages
+arch-chroot "${INSTALL_DIR}" bash -c '
+set -euo pipefail
+
+# Disable parallel Downloads for stability
+PACMAN_OPTS="--noconfirm --needed"
+
+# Install desktop environment
+pacman '"${PACMAN_OPTS}"' -S \
+    xorg-server xorg-xinit xorg-xrandr xorg-xrdb \
+    mesa glu \
+    xf86-input-libinput \
+    xf86-video-amdgpu xf86-video-intel xf86-video-nouveau \
+    lightdm lightdm-gtk-greeter accountsservice \
+    cinnamon cinnamon-control-center cinnamon-desktop cinnamon-menus \
+    cinnamon-session cinnamon-settings-daemon cinnamon-screensaver \
+    cinnamon-translations cjs muffin nemo gnome-terminal \
+    gnome-keyring gnome-themes-extra \
+    xdg-desktop-portal-xapp xdg-user-dirs xdg-utils \
+    pipewire-pulse wireplumber alsa-utils \
+    network-manager-applet \
+    >/dev/null 2>&1 || true
+
+# Install server packages
+pacman '"${PACMAN_OPTS}"' -S \
+    nginx-mainline apache certbot certbot-nginx \
+    mariadb postgresql redis sqlite \
+    docker docker-compose containerd buildkit \
+    prometheus grafana node_exporter netdata \
+    bind dnsmasq nftables wireguard-tools \
+    nmap tcpdump traceroute mtr socat \
+    cloud-init cloud-guest-utils \
+    qemu-desktop libvirt edk2-ovmf \
+    restic borg \
+    chrony \
+    base-devel go rust nodejs npm python python-pip \
+    tmux screen vim git curl wget aria2 \
+    >/dev/null 2>&1 || true
+
+echo "[PKG] Server packages installed."
+' || true
+
+log "Server packages installed."
+
+# ==============================================================================
+# STEP 9: Enable display manager and graphical target
+# ==============================================================================
+arch-chroot "${INSTALL_DIR}" bash -c '
+systemctl enable lightdm.service >/dev/null 2>&1 || true
+systemctl set-default graphical.target >/dev/null 2>&1 || true
+echo "[SVC] Display manager enabled, graphical target set."
+' || true
+
+log "Desktop environment configured."
+
+# ==============================================================================
+# STEP 10: Cleanup and reboot
+# ==============================================================================
+info "Cleaning up..."
+rm -f "${INSTALL_DIR}/root/chroot_config.sh"
+rm -f "${INSTALL_DIR}/var/cache/pacman/pkg/"*.pkg.tar.* 2>/dev/null || true
+
+# Unmount
+sync
+if mountpoint -q "${INSTALL_DIR}"; then
+    umount -R "${INSTALL_DIR}" 2>/dev/null || true
+fi
+
+echo ""
+echo -e "${GREEN}╔══════════════════════════════════════════════════════════════╗${NC}"
+echo -e "${GREEN}║          ✓ AcreetionOS Server installed successfully!       ║${NC}"
+echo -e "${GREEN}║                                                              ║${NC}"
+echo -e "${GREEN}║  User:    admin / acreetion                                  ║${NC}"
+echo -e "${GREEN}║  Root:    root / acreetion                                   ║${NC}"
+echo -e "${GREEN}║  SSH:     ssh admin@<ip>                                     ║${NC}"
+echo -e "${GREEN}║                                                              ║${NC}"
+echo -e "${GREEN}║  Services:  nginx, mariadb, docker, libvirt, prometheus...   ║${NC}"
+echo -e "${GREEN}║  Desktop:   Cinnamon (lightdm auto-login after reboot)       ║${NC}"
+echo -e "${GREEN}║                                                              ║${NC}"
+echo -e "${GREEN}║  CHANGE YOUR PASSWORDS AFTER FIRST LOGIN!                    ║${NC}"
+echo -e "${GREEN}╚══════════════════════════════════════════════════════════════╝${NC}"
+echo ""
+
+info "Rebooting in 10 seconds..."
+for i in 10 9 8 7 6 5 4 3 2 1; do
+    echo -ne "${YELLOW}${i}...${NC} "
+    sleep 1
+done
+echo ""
+
+log "Rebooting now!"
+reboot

@@ -1,17 +1,35 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code when working with code in this repository.
 
 ## Project Overview
 
-AcreetionOS Server is a headless server variant of AcreetionOS — an Arch Linux-based distribution that creates bootable ISO images using the archiso framework. It strips away all desktop environment components (Cinnamon, Xorg, audio, Calamares GUI) and replaces them with server-oriented tooling: web servers, databases, container runtimes, monitoring stacks, and cloud-init provisioning. Designed for deployment on bare metal, VMs, and cloud infrastructure.
+AcreetionOS Server is a server variant of AcreetionOS — an Arch Linux-based distribution that creates a bootable ISO using the archiso framework. Unlike the desktop variant, this ISO **auto-installs itself** to disk on boot. After installation, the user is presented with a **Cinnamon desktop environment** pre-loaded with server-oriented tooling — similar to Windows Server with Desktop Experience.
+
+Think of it as: boot → wait 10 minutes → reboot → server desktop ready.
+
+## Key Concept: Auto-Installation
+
+When the ISO boots:
+1. The live environment starts with root autologin on tty1
+2. A systemd service (`acreetionos-server-installer.service`) triggers automatically
+3. The installer (`/usr/local/bin/acreetionos-server-installer`) runs:
+   - Detects the first available non-ISO disk
+   - Creates GPT partition layout (1GB EFI + rest as ext4)
+   - Installs base system via pacstrap
+   - Configures locale, hostname, users, bootloader, services
+   - Installs all packages (Cinnamon desktop + server tools)
+   - Enables lightdm and graphical.target
+   - Reboots
+
+After reboot, login with: `admin` / `acreetion` (or `root` / `acreetion`)
 
 ## Build Commands
 
 ### Primary Build Process
-- **Full build**: `./build.sh` - Cleans workspace and builds ISO
-- **Manual build**: `./mkarchiso.sh` - Runs mkarchiso directly
-- **Clean workspace**: `./refresh.sh` - Removes work/ and out/ directories
+- **Full build**: `./build.sh` — Cleans workspace and builds ISO
+- **Manual build**: `./mkarchiso.sh` — Runs mkarchiso directly
+- **Clean workspace**: `./refresh.sh` — Removes work/ and out/ directories
 
 ### Build Process Details
 1. `refresh.sh` removes previous build artifacts (work/, out/)
@@ -22,45 +40,35 @@ AcreetionOS Server is a headless server variant of AcreetionOS — an Arch Linux
 ## Architecture
 
 ### Key Configuration Files
-- **profiledef.sh**: Main archiso profile configuration defining ISO metadata, boot modes, and file permissions
-- **packages.x86_64**: Server-optimized package list (no desktop, focused on server/deployment tooling)
-- **pacman.conf**: Custom Pacman configuration for package management
+- **profiledef.sh**: ISO metadata, boot modes, file permissions
+- **packages.x86_64**: Package list — Cinnamon desktop + server tooling
+- **pacman.conf**: Custom Pacman configuration
 - **bootstrap_packages.x86_64**: Bootstrap packages for initial system
 
-### Directory Structure
-- **airootfs/**: Root filesystem overlay that becomes the live server system
-  - `etc/`: System configuration files
-  - `usr/`: User binaries, scripts, and customizations
-  - `root/`: Root user files and installation scripts
-- **grub/**: GRUB bootloader configuration
-- **syslinux/**: SYSLINUX bootloader configuration
-- **efiboot/**: EFI boot configuration
+### Auto-Installer Components
+- **airootfs/usr/local/bin/acreetionos-server-installer**: Main install script (partition, pacstrap, configure, reboot)
+- **airootfs/usr/local/bin/acreetionos-server-display**: tty1 display script (shows progress during install)
+- **airootfs/etc/systemd/system/acreetionos-server-installer.service**: Systemd service that triggers installer on boot
+- **airootfs/root/.automated_script.sh**: Archiso script mechanism (can also trigger installer via kernel param)
 
-### Server Features
-- Minimal headless ISO with no X11/Wayland or desktop components
-- Built-in: nginx, apache, mariadb, postgresql, redis, docker, docker-compose
-- Monitoring: prometheus, grafana, node_exporter, netdata
-- Networking: bind, dnsmasq, wireguard, frr, bird, nftables
-- Cloud-ready: cloud-init, cloud-guest-utils
-- Remote management: openssh, mosh, tigervnc
-- Backup: restic, borg
-
-## Deployment Targets
-- Bare metal servers
-- KVM/QEMU/libvirt VMs
-- Cloud providers (via cloud-init)
-- Docker/container hosts
-- Database servers
-- Web/application servers
-- Network appliances (routers, firewalls)
-- Monitoring infrastructure
+### What's Included
+- **Desktop**: Cinnamon (core components), LightDM, Xorg, PipeWire
+- **Web**: nginx-mainline, apache, certbot
+- **Databases**: mariadb, postgresql, redis, sqlite
+- **Containers**: docker, docker-compose, containerd, buildkit
+- **Monitoring**: prometheus, grafana, node_exporter, netdata
+- **Networking**: bind, dnsmasq, wireguard-tools, nftables
+- **Cloud**: cloud-init, cloud-guest-utils
+- **Virtualization**: qemu, libvirt, edk2-ovmf
+- **Backup**: restic, borg
+- **Dev**: base-devel, git, go, rust, nodejs, python
 
 ## Development Notes
 
 - Build process requires sudo privileges for archiso operations
 - ISO builds are resource-intensive and create large work directories
 - Package list can be modified by editing packages.x86_64
-- Custom scripts and configurations go in airootfs/ overlay
-- File permissions are explicitly defined in profiledef.sh
-- Forked from AcreetionOS desktop — see parent project for desktop variant
-- All repos are mirrored across GitHub, GitLab, and Codeberg
+- The auto-installer is in `/usr/local/bin/acreetionos-server-installer` in airootfs
+- Default credentials: `admin`/`acreetion` — **change on first login**
+- Forked from AcreetionOS desktop — see parent for desktop variant
+- Mirrored across GitHub, GitLab, and Codeberg
