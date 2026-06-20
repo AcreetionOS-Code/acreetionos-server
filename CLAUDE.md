@@ -35,6 +35,15 @@ Passwords are generated at install time (32-char random). Displayed on screen
 and saved to `/root/.credentials.txt` on the installed system. **Nothing is
 hardcoded in the repository.**
 
+### User Model (IAM-like)
+Six dedicated users with group-based permissions — use the right user:
+- `admin` (wheel,docker,libvirt) — full admin, sudo requires password
+- `dbadmin` (postgres,mysql) — database operations, no sudo needed
+- `webadmin` (http) — web server management, no sudo needed
+- `ops` (docker,libvirt,journal) — containers + monitoring, no sudo needed
+- `backup` (storage) — backup tools, no sudo needed
+- `root` — everything, use sparingly
+
 ## Build Commands
 
 - **Full build**: `./build.sh` — cleans and builds ISO

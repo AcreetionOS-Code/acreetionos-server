@@ -14,6 +14,13 @@ info() { echo -e "${BLUE}[i]${NC} $1"; }
 warn() { echo -e "${YELLOW}[!]${NC} $1"; }
 err()  { echo -e "${RED}[✗]${NC} $1"; }
 
+# Check if user is in wheel group (has admin access)
+if [[ $EUID -ne 0 ]] && ! groups | grep -q '\bwheel\b'; then
+    echo "This tool requires admin access. Log in as 'admin' or use 'su admin'."
+    exit 1
+fi
+
+# If user is in wheel group but not root, re-run with sudo
 if [[ $EUID -ne 0 ]]; then
     exec sudo "$0" "$@"
 fi

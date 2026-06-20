@@ -34,7 +34,7 @@ TOOLS=(
     "Monitoring|procs|Modern ps replacement|procs"
     "Monitoring|bpytop|Resource monitor (Python)|bpytop"
     "Monitoring|nvtop|GPU monitoring|nvtop"
-    "Monitoring|iotop|I/O monitoring|sudo iotop"
+    "Monitoring|iotop|I/O monitoring (needs root)|sudo iotop"
     "Monitoring|netdata|Real-time monitoring dashboard|systemctl start netdata 2>/dev/null; echo 'Open http://localhost:19999'"
     
     # ── DISK & STORAGE ──
@@ -109,10 +109,10 @@ TOOLS=(
     "Database|redis|Redis server|redis-cli --help"
     
     # ── SECURITY & HARDENING ──
-    "Security|lynis|Security auditing|sudo lynis audit system"
+    "Security|lynis|Security auditing|lynis audit system"
     "Security|rkhunter|Rootkit hunter|sudo rkhunter --check"
     "Security|chkrootkit|Rootkit checker|sudo chkrootkit"
-    "Security|fail2ban|Intrusion prevention|sudo fail2ban-client status"
+    "Security|fail2ban|Intrusion prevention|fail2ban-client status"
     "Security|clamav|Antivirus scanner|clamscan --help"
     "Security|nftables|Firewall manager|sudo nft list ruleset"
     
@@ -158,12 +158,24 @@ done
 
 show_banner() {
     clear
+    CURRENT_USER=$(whoami)
     echo -e "${CYAN}"
     echo "╔══════════════════════════════════════════════════════════════╗"
     echo "║         AcreetionOS Server — Toolbox                        ║"
     echo "║  Every server maintainer's dream toolkit                    ║"
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
+    echo -e "  ${BOLD}Logged in as:${NC} ${GREEN}${CURRENT_USER}${NC}"
+    echo -e "  ${BOLD}Your groups:${NC}  ${YELLOW}$(groups ${CURRENT_USER} 2>/dev/null | sed 's/.*: //')${NC}"
+    echo ""
+    echo -e "  ${BLUE}User recommendations:${NC}"
+    echo -e "    admin    → Full system administration"
+    echo -e "    dbadmin  → Database operations (postgres, mysql)"
+    echo -e "    webadmin → Web server management (nginx, apache, certbot)"
+    echo -e "    ops      → Containers, monitoring, operations"
+    echo -e "    backup   → Backup & recovery"
+    echo -e "    root     → Everything (use sparingly)"
+    echo ""
 }
 
 show_category_menu() {

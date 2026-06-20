@@ -282,30 +282,100 @@ HOSTSEOF
 ln -sf /usr/share/zoneinfo/UTC /etc/localtime
 hwclock --systohc
 
-# Set passwords (passed in from installer)
+# ── User Model: Specialized Accounts ────────────────────────────────────
+# Instead of sudo-everything, we create purpose-built users with the exact
+# permissions they need via groups. Like AWS IAM — you ARE the role.
+#
+#   admin     → Full system admin (wheel, docker, libvirt)
+#   dbadmin   → Database operations
+#   webadmin  → Web server management
+#   ops       → Monitoring, containers, operations
+#   backup    → Backup & recovery
+
 echo "root:${ROOT_PW}" | chpasswd
-useradd -m -G wheel,users,docker,libvirt -s /bin/bash admin 2>/dev/null || true
+
+# Admin — full control
+useradd -m -G wheel,docker,libvirt,systemd-journal -s /bin/bash admin 2>/dev/null || true
 echo "admin:${ADMIN_PW}" | chpasswd
 
-# Write credentials to disk for the user
+# DB admin — database operations
+groupadd -f postgres 2>/dev/null || true
+groupadd -f mysql 2>/dev/null || true
+useradd -m -G postgres,mysql -s /bin/bash dbadmin 2>/dev/null || true
+DBADMIN_PW=$(openssl rand -base64 24 | tr -d '\n' | head -c 32)
+echo "dbadmin:${DBADMIN_PW}" | chpasswd
+
+# Web admin — web server management
+groupadd -f http 2>/dev/null || true
+useradd -m -G http -s /bin/bash webadmin 2>/dev/null || true
+WEBADMIN_PW=$(openssl rand -base64 24 | tr -d '\n' | head -c 32)
+echo "webadmin:${WEBADMIN_PW}" | chpasswd
+
+# Ops — operations, containers, monitoring
+useradd -m -G docker,libvirt,systemd-journal -s /bin/bash ops 2>/dev/null || true
+OPS_PW=$(openssl rand -base64 24 | tr -d '\n' | head -c 32)
+echo "ops:${OPS_PW}" | chpasswd
+
+# Backup — backup & recovery operator
+useradd -m -G storage -s /bin/bash backup 2>/dev/null || true
+BACKUP_PW=$(openssl rand -base64 24 | tr -d '\n' | head -c 32)
+echo "backup:${BACKUP_PW}" | chpasswd
+
+# Write ALL credentials to disk
 cat > /root/.credentials.txt << CREDEOF
 ╔══════════════════════════════════════════════════════════════╗
 ║        AcreetionOS Server — Generated Credentials           ║
 ║  These were randomly generated during installation.         ║
-║  CHANGE THEM IMMEDIATELY with 'passwd' after first login.   ║
+║  CHANGE THEM IMMEDIATELY after first login.                 ║
 ╚══════════════════════════════════════════════════════════════╝
 
-Root:  ${ROOT_PW}
-Admin: ${ADMIN_PW}
+  User       Groups                              Password
+  ──────────────────────────────────────────────────────
+  root       (superuser)                          ${ROOT_PW}
+  admin      wheel, docker, libvirt, journal      ${ADMIN_PW}
+  dbadmin    postgres, mysql                      ${DBADMIN_PW}
+  webadmin   http                                 ${WEBADMIN_PW}
+  ops        docker, libvirt, journal             ${OPS_PW}
+  backup     storage                              ${BACKUP_PW}
 
-ssh admin@<ip-address>
+  SSH:  ssh admin@<ip-address>
+        ssh ops@<ip-address>
+
+  Each user has exactly the permissions they need — no more, no less.
+  Like IAM roles. Use the right user for the right job.
+
+  #KeepLinuxFree #AcreetionOSWillAlwaysBeFree
 CREDEOF
 chmod 600 /root/.credentials.txt
 
-# Sudo config
-echo "%wheel ALL=(ALL:ALL) ALL" > /etc/sudoers.d/99-wheel
-echo "Defaults !requiretty" >> /etc/sudoers.d/99-wheel
-chmod 440 /etc/sudoers.d/99-wheel
+# ── Sudoers: Group-Based Permissions ────────────────────────────────────
+# Full admin (wheel) — password required
+echo "# AcreetionOS Server — Group-based sudo permissions" > /etc/sudoers.d/99-acreetionos
+echo "# Each group has exactly the permissions it needs" >> /etc/sudoers.d/99-acreetionos
+echo "" >> /etc/sudoers.d/99-acreetionos
+echo "# Full admin — members of wheel can do anything" >> /etc/sudoers.d/99-acreetionos
+echo "%wheel ALL=(ALL:ALL) ALL" >> /etc/sudoers.d/99-acreetionos
+echo "" >> /etc/sudoers.d/99-acreetionos
+echo "# Ops — passwordless docker and system management" >> /etc/sudoers.d/99-acreetionos
+echo "%docker ALL=(ALL) NOPASSWD: /usr/bin/docker, /usr/bin/docker-compose, /usr/bin/ctop, /usr/bin/lazydocker" >> /etc/sudoers.d/99-acreetionos
+echo "%libvirt ALL=(ALL) NOPASSWD: /usr/bin/virsh, /usr/bin/virt-manager, /usr/bin/qemu-system-*" >> /etc/sudoers.d/99-acreetionos
+echo "" >> /etc/sudoers.d/99-acreetionos
+echo "# Monitoring — passwordless system inspection" >> /etc/sudoers.d/99-acreetionos
+echo "%systemd-journal ALL=(ALL) NOPASSWD: /usr/bin/journalctl" >> /etc/sudoers.d/99-acreetionos
+echo "" >> /etc/sudoers.d/99-acreetionos
+echo "# Web admin — passwordless service management" >> /etc/sudoers.d/99-acreetionos
+echo "%http ALL=(ALL) NOPASSWD: /usr/bin/systemctl * nginx*, /usr/bin/systemctl * apache*, /usr/bin/systemctl * http*, /usr/bin/certbot" >> /etc/sudoers.d/99-acreetionos
+echo "" >> /etc/sudoers.d/99-acreetionos
+echo "# Backup — passwordless backup tools" >> /etc/sudoers.d/99-acreetionos
+echo "%storage ALL=(ALL) NOPASSWD: /usr/bin/restic, /usr/bin/borg, /usr/bin/timeshift, /usr/bin/ddrescue, /usr/bin/fsarchiver" >> /etc/sudoers.d/99-acreetionos
+echo "" >> /etc/sudoers.d/99-acreetionos
+echo "# Defaults" >> /etc/sudoers.d/99-acreetionos
+echo "Defaults !requiretty" >> /etc/sudoers.d/99-acreetionos
+echo "Defaults timestamp_timeout=30" >> /etc/sudoers.d/99-acreetionos
+chmod 440 /etc/sudoers.d/99-acreetionos
+
+# Remove old wheel-only config if it exists
+rm -f /etc/sudoers.d/99-wheel 2>/dev/null || true
 
 # Configure mkinitcpio
 sed -i 's/^HOOKS=.*/HOOKS=(base udev autodetect modconf block filesystems keyboard)/' /etc/mkinitcpio.conf
@@ -455,24 +525,31 @@ fi
 
 echo ""
 echo -e "${GREEN}╔══════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}╔══════════════════════════════════════════════════════════════╗${NC}"
 echo -e "${GREEN}║          ✓ AcreetionOS Server installed successfully!       ║${NC}"
 echo -e "${GREEN}║                                                              ║${NC}"
-echo -e "${GREEN}║  ┌─ Generated Credentials ──────────────────────────┐        ║${NC}"
+echo -e "${GREEN}║  ┌─ Users & Groups ────────────────────────────────┐        ║${NC}"
 echo -e "${GREEN}║  │                                                  │        ║${NC}"
-printf "${GREEN}║  │  root:  %-32s  │        ║${NC}\n" "${ROOT_PASSWORD}"
-printf "${GREEN}║  │  admin: %-32s  │        ║${NC}\n" "${USER_PASSWORD}"
+printf "${GREEN}║  │  %-8s %-35s │        ║${NC}\n" "root"   "(superuser)"
+printf "${GREEN}║  │  %-8s %-35s │        ║${NC}\n" "admin"  "wheel, docker, libvirt, journal"
+printf "${GREEN}║  │  %-8s %-35s │        ║${NC}\n" "dbadmin"  "postgres, mysql"
+printf "${GREEN}║  │  %-8s %-35s │        ║${NC}\n" "webadmin" "http"
+printf "${GREEN}║  │  %-8s %-35s │        ║${NC}\n" "ops"    "docker, libvirt, journal"
+printf "${GREEN}║  │  %-8s %-35s │        ║${NC}\n" "backup" "storage"
 echo -e "${GREEN}║  │                                                  │        ║${NC}"
-echo -e "${GREEN}║  │  SSH:   ssh admin@<ip-address>                   │        ║${NC}"
+echo -e "${GREEN}║  │  SSH:  ssh admin@<ip-address>                    │        ║${NC}"
+echo -e "${GREEN}║  │  SSH:  ssh ops@<ip-address>                      │        ║${NC}"
 echo -e "${GREEN}║  │                                                  │        ║${NC}"
-echo -e "${GREEN}║  │  ⚠  WRITE THESE DOWN. They will not be shown     │        ║${NC}"
-echo -e "${GREEN}║  │     again. Change them after first login.        │        ║${NC}"
-echo -e "${GREEN}║  │     Credentials also saved at                    │        ║${NC}"
+echo -e "${GREEN}║  │  ⚠  Passwords for ALL users are in               │        ║${NC}"
 echo -e "${GREEN}║  │     /root/.credentials.txt on the new system.    │        ║${NC}"
+echo -e "${GREEN}║  │                                                  │        ║${NC}"
+echo -e "${GREEN}║  │  Each user has IAM-like permissions via groups.  │        ║${NC}"
+echo -e "${GREEN}║  │  Use the right user for the right job —           │        ║${NC}"
+echo -e "${GREEN}║  │  no sudo required for most operations.           │        ║${NC}"
 echo -e "${GREEN}║  └──────────────────────────────────────────────────┘        ║${NC}"
 echo -e "${GREEN}║                                                              ║${NC}"
-echo -e "${GREEN}║  Services:  nginx, mariadb, docker, libvirt, prometheus...   ║${NC}"
-echo -e "${GREEN}║  Desktop:   Cinnamon (lightdm auto-login after reboot)       ║${NC}"
+echo -e "${GREEN}║  Tools:  acreetionos-toolbox   — launch anything             ║${NC}"
+echo -e "${GREEN}║          acreetionos-maintain  — system maintenance          ║${NC}"
+echo -e "${GREEN}║                                                              ║${NC}"
 echo -e "${GREEN}╚══════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 

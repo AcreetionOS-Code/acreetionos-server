@@ -4,6 +4,38 @@ AcreetionOS Server comes with **90+ pre-installed tools** across 15 categories.
 This is every server maintainer's dream toolkit — curated, categorized, and
 ready to use.
 
+## User Model: IAM-like Permissions (No Sudo Required)
+
+Instead of forcing everything through `sudo`, AcreetionOS Server uses
+**dedicated user accounts** with group-based permissions — like AWS IAM roles.
+Each user has exactly the permissions they need, nothing more.
+
+| User      | Groups                         | Can do without sudo                          |
+|-----------|--------------------------------|----------------------------------------------|
+| `admin`   | wheel, docker, libvirt, journal | anything (sudo requires password)            |
+| `dbadmin` | postgres, mysql                 | manage databases, run mycli/pgcli/psql       |
+| `webadmin`| http                            | manage nginx/apache, run certbot             |
+| `ops`     | docker, libvirt, journal        | run containers, manage VMs, read logs        |
+| `backup`  | storage                         | run restic, borg, timeshift, ddrescue        |
+| `root`    | (superuser)                     | everything (use sparingly)                   |
+
+**Log in as the right user:**
+```bash
+su - admin      # full system administration
+su - dbadmin    # database work
+su - webadmin   # web server management
+su - ops        # containers and operations
+su - backup     # backup tasks
+```
+
+Or SSH directly:
+```bash
+ssh admin@<server>
+ssh ops@<server>
+```
+
+## acreetionos-toolbox — Browse & Launch Everything
+
 ## acreetionos-toolbox — Browse & Launch Everything
 
 ```bash

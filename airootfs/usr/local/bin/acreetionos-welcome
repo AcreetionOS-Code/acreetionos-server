@@ -66,6 +66,23 @@ Each major release gets 2 years of support.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+👥  USERS & PERMISSIONS
+
+This system uses dedicated user accounts with IAM-like permissions.
+Instead of 'sudo' for everything, use the right user for the right job:
+
+  admin    → Full system administration (wheel, docker, libvirt)
+  dbadmin  → Database operations (postgres, mysql groups)
+  webadmin → Web server management (http group)
+  ops      → Containers, monitoring, operations (docker, libvirt, journal)
+  backup   → Backup & recovery (storage group)
+
+Each group has passwordless sudo access to ONLY its tools.
+Members of 'wheel' have full sudo access (password required).
+
+Switch users with:  su - <username>
+Or SSH directly:    ssh <user>@<ip>
+
 🛠️  BUILT-IN TOOLS
 
   acreetionos-toolbox     — Browse & launch 90+ server tools (categorized)
@@ -74,9 +91,12 @@ Each major release gets 2 years of support.
   acreetionos-strip-gui  — Remove the desktop, switch to TTY-only
   acreetionos-install-gui — Reinstall the desktop
 
-Run any of these with sudo:
+Most tools work without sudo if you're logged in as the right user:
 
-  sudo acreetionos-toolbox
+  ops@server    → docker, lazydocker, journalctl
+  dbadmin@server → mycli, pgcli, psql, mysql
+  webadmin@server → systemctl status nginx, certbot
+  admin@server  → everything
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
